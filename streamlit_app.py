@@ -33,7 +33,7 @@ if use_uploaded_file == "Upload your own CSV":
 else:
     df = pd.read_csv("data/StudentPerformanceFactors.csv")
 
-# 📊 Select columns
+# Select columns
 numeric_columns = df.select_dtypes(include=["number"]).columns.tolist()
 
 if len(numeric_columns) < 2:
@@ -44,18 +44,18 @@ x_col = st.selectbox("Select X-axis", numeric_columns)
 y_options = [col for col in numeric_columns if col != x_col]
 y_col = st.selectbox("Select Y-axis", y_options)
 
-# 🖼️ Plot the chart
+# Plot the chart
 fig, ax = plt.subplots()
 sns.scatterplot(data=df, x=x_col, y=y_col, ax=ax)
 ax.set_title(f"{y_col} vs {x_col}")
 st.pyplot(fig)
 
-# 📷 Save image for Gemini
+# Save image for Gemini
 temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
 fig.savefig(temp_file.name, bbox_inches="tight")
 image_path = temp_file.name
 
-# 🤖 AI Explanation Button
+# AI Explanation Button
 if st.button("🔍 Ask Gemini to explain this graph"):
     try:
         image = Image.open(image_path)
