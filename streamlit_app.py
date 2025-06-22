@@ -1,66 +1,78 @@
-import altair as alt
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import tempfile
+from PIL import Image
+import google.generativeai as genai
 
-# Show the page title and description.
-st.set_page_config(page_title="Movies dataset", page_icon="🎬")
-st.title("🎬 Movies dataset")
-st.write(
-    """
-    This app visualizes data from [The Movie Database (TMDB)](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata).
-    It shows which movie genre performed best at the box office over the years. Just 
-    click on the widgets below to explore!
-    """
-)
+# Configure Gemini API
+genai.configure(api_key="AIzaSyA3x_E0nKnSq1BZjZnenwRL1t2vXSkR5no")
 
+# Streamlit setup
+st.set_page_config(page_title="CSVision - A Simple Graphing Tool", page_icon="📊")
+st.title("CSVision: A Simple Graphing Tool")
+st.subheader("Welcome to CSVision, a simple yet powerful graphing tool. This tool allows you to generate graphs, either from your own CSV data or from data in our database. Additionally, this tool allows you to generate an AI explanation using Google Gemini of the graph.")
+st.write("Upload a CSV or use the built-in dataset. Select two columns to visualize and AI can explain the graph.")
 
-# Load the data from a CSV. We're caching this so it doesn't reload every time the app
-# reruns (e.g. if the user interacts with the widgets).
-@st.cache_data
-def load_data():
-    df = pd.read_csv("data/movies_genres_summary.csv")
-    return df
+# Selection
+use_uploaded_file = st.radio("Choose a dataset:", ["Use built-in student performance data", "Upload your own CSV"])
 
+if use_uploaded_file == "Upload your own CSV":
+    uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success("✅ CSV loaded successfully!")
+        except Exception as e:
+            st.error(f"❌ Error loading CSV: {e}")
+            st.stop()
+    else:
+        st.info("Please upload a CSV file to continue.")
+        st.stop()
+else:
+    df = pd.read_csv("data/StudentPerformanceFactors.csv")
 
-df = load_data()
+# 📊 Select columns
+numeric_columns = df.select_dtypes(include=["number"]).columns.tolist()
 
-# Show a multiselect widget with the genres using `st.multiselect`.
-genres = st.multiselect(
-    "Genres",
-    df.genre.unique(),
-    ["Action", "Adventure", "Biography", "Comedy", "Drama", "Horror"],
-)
+if len(numeric_columns) < 2:
+    st.warning("Need at least two numeric columns.")
+    st.stop()
 
-# Show a slider widget with the years using `st.slider`.
-years = st.slider("Years", 1986, 2006, (2000, 2016))
+x_col = st.selectbox("Select X-axis", numeric_columns)
+y_options = [col for col in numeric_columns if col != x_col]
+y_col = st.selectbox("Select Y-axis", y_options)
 
-# Filter the dataframe based on the widget input and reshape it.
-df_filtered = df[(df["genre"].isin(genres)) & (df["year"].between(years[0], years[1]))]
-df_reshaped = df_filtered.pivot_table(
-    index="year", columns="genre", values="gross", aggfunc="sum", fill_value=0
-)
-df_reshaped = df_reshaped.sort_values(by="year", ascending=False)
+# 🖼️ Plot the chart
+fig, ax = plt.subplots()
+sns.scatterplot(data=df, x=x_col, y=y_col, ax=ax)
+ax.set_title(f"{y_col} vs {x_col}")
+st.pyplot(fig)
 
+# 📷 Save image for Gemini
+temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+fig.savefig(temp_file.name, bbox_inches="tight")
+image_path = temp_file.name
 
-# Display the data as a table using `st.dataframe`.
-st.dataframe(
-    df_reshaped,
-    use_container_width=True,
-    column_config={"year": st.column_config.TextColumn("Year")},
-)
+# 🤖 AI Explanation Button
+if st.button("🔍 Ask Gemini to explain this graph"):
+    try:
+        image = Image.open(image_path)
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        prompt = [
+            image,
+            f"This is a chart showing {y_col} vs {x_col}. Please explain the trend, any correlations, and insights you can derive."
+        ]
+        response = model.generate_content(prompt)
+        st.subheader("🤖 Gemini's Explanation")
+        st.write(response.text)
 
-# Display the data as an Altair chart using `st.altair_chart`.
-df_chart = pd.melt(
-    df_reshaped.reset_index(), id_vars="year", var_name="genre", value_name="gross"
-)
-chart = (
-    alt.Chart(df_chart)
-    .mark_line()
-    .encode(
-        x=alt.X("year:N", title="Year"),
-        y=alt.Y("gross:Q", title="Gross earnings ($)"),
-        color="genre:N",
-    )
-    .properties(height=320)
-)
-st.altair_chart(chart, use_container_width=True)
+        st.download_button(
+            label="📥 Download AI Explanation",
+            data=response.text,
+            file_name="gemini_analysis.txt",
+            mime="text/plain"
+        )
+    except Exception as e:
+        st.error(f"⚠️ Gemini API error: {e}")
