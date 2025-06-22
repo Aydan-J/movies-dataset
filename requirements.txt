@@ -1,7 +1,4 @@
 streamlit
 pandas
 seaborn
-matplotlib.pyplot
-tempfile
-from PIL import Image
 google.generativeai
